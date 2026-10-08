@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Mode Tokens (Warm off-white, light indigo surfaces, soft violet accents) */
+    --background: #f8fafc;
+    --surface: #ffffff;
+    --surface-secondary: #f1f5f9;
+    --surface-elevated: #ffffff;
+    --primary: #5457e5;
+    --primary-hover: #4345c7;
+    --primary-light: #7375f5;
+    --secondary: #0891b2;
+    --secondary-hover: #0e7490;
+    --accent: #d97706;
+    --important: #7c3aed;
+    --success: #059669;
+    --warning: #d97706;
+    --danger: #e11d48;
+    --border: rgba(15, 23, 42, 0.09);
+    --border-strong: rgba(15, 23, 42, 0.16);
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #8291a5;
+    --bubble-outgoing: #eef2ff;
+    --bubble-outgoing-border: #c7d2fe;
+    --bubble-incoming: #ffffff;
+    --bubble-incoming-border: #e2e8f0;
+    --ai-highlight: rgba(124, 58, 237, 0.08);
+  }
+
+  .dark {
+    /* Dark Mode Tokens (Deep navy-indigo layered surfaces, calm, intelligent, futuristic) */
+    --background: #090d1c;
+    --surface: #0e1428;
+    --surface-secondary: #141c38;
+    --surface-elevated: #1a2447;
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --primary-light: #818cf8;
+    --secondary: #06b6d4;
+    --secondary-hover: #0891b2;
+    --accent: #f59e0b;
+    --important: #9333ea;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #f43f5e;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --bubble-outgoing: #192244;
+    --bubble-outgoing-border: rgba(99, 102, 241, 0.35);
+    --bubble-incoming: #11172f;
+    --bubble-incoming-border: rgba(255, 255, 255, 0.07);
+    --ai-highlight: rgba(139, 92, 246, 0.12);
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+}
+
+/* Subtle Layered Ambient Background for MindChat */
+.mindchat-bg {
+  background-color: var(--background);
+  background-image: 
+    radial-gradient(at 10% 15%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+    radial-gradient(at 85% 10%, rgba(6, 182, 212, 0.07) 0px, transparent 45%),
+    radial-gradient(at 50% 90%, rgba(139, 92, 246, 0.06) 0px, transparent 60%);
+  background-attachment: fixed;
+}
+
+.dark .mindchat-bg {
+  background-image: 
+    radial-gradient(at 12% 15%, rgba(99, 102, 241, 0.14) 0px, transparent 50%),
+    radial-gradient(at 88% 12%, rgba(6, 182, 212, 0.10) 0px, transparent 45%),
+    radial-gradient(at 50% 95%, rgba(147, 51, 234, 0.10) 0px, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(20, 28, 56, 0.5) 0%, transparent 100%);
+}
+
+/* Custom Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+/* Capsule Tag Styling */
+.profile-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.65rem;
+  border-radius: 9999px;
+  background: rgba(99, 102, 241, 0.1);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  transition: all 0.2s ease;
+}
+
+.profile-tag:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+/* Timer Indicator Pulse */
+.timer-pulse {
+  animation: timerPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes timerPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

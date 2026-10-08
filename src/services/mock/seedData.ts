@@ -1,0 +1,543 @@
+import { Profile, Chat, Message, AIMemory, StatusItem, NotificationItem, PrivacySettings, ChatStreak, CallRecord, ScheduledMessage } from '../../types/database';
+
+export const CURRENT_USER: Profile = {
+  id: 'usr_me_001',
+  username: 'antigravity_user',
+  display_name: 'You',
+  avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  about: 'Building with MindChat • AI & Privacy Advocate',
+  online_status: 'online',
+  last_seen: new Date().toISOString(),
+  preferred_language: 'en',
+  ai_analysis_enabled: true,
+  tags: ['AI/ML', 'FullStack', 'Builder'],
+  created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+};
+
+export const DEMO_USERS: Profile[] = [
+  {
+    id: 'usr_varsha_002',
+    username: 'varsha_k',
+    display_name: 'Varsha',
+    avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    about: 'Leading the Final Year AI Project • Coffee lover ☕',
+    online_status: 'online',
+    last_seen: new Date().toISOString(),
+    preferred_language: 'kn', // Kannada preference
+    ai_analysis_enabled: true,
+    tags: ['AI/ML', 'Student', 'Developer'],
+    created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
+  },
+  {
+    id: 'usr_rahul_003',
+    username: 'rahul_sharma',
+    display_name: 'Rahul',
+    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    about: 'Design & Frontend systems engineer',
+    online_status: 'away',
+    last_seen: new Date(Date.now() - 15 * 60000).toISOString(),
+    preferred_language: 'hi', // Hindi
+    ai_analysis_enabled: true,
+    tags: ['UI/UX', 'Product', 'Vite'],
+    created_at: new Date(Date.now() - 25 * 86400000).toISOString(),
+  },
+  {
+    id: 'usr_bhumika_004',
+    username: 'bhumika_r',
+    display_name: 'Bhumika',
+    avatar_url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    about: 'Research Scholar @ Indian Institute of Science',
+    online_status: 'dnd',
+    last_seen: new Date(Date.now() - 45 * 60000).toISOString(),
+    preferred_language: 'kn', // Kannada
+    ai_analysis_enabled: true,
+    tags: ['NLP', 'Researcher', 'Bangalore'],
+    created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
+  },
+  {
+    id: 'usr_ananya_005',
+    username: 'ananya_sen',
+    display_name: 'Ananya',
+    avatar_url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
+    about: 'Cloud Architecture & Supabase enthusiast ⚡',
+    online_status: 'offline',
+    last_seen: new Date(Date.now() - 3 * 3600000).toISOString(),
+    preferred_language: 'bn', // Bengali
+    ai_analysis_enabled: true,
+    tags: ['Cloud', 'PostgreSQL', 'TechLead'],
+    created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
+  },
+];
+
+// Seed chats
+export const SEED_CHATS: Chat[] = [
+  {
+    id: 'chat_varsha_dm',
+    type: 'direct',
+    name: 'Varsha',
+    avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    default_timer_seconds: 0,
+    ai_enabled: true,
+    has_ai_important: true,
+    unread_count: 1,
+    is_pinned: true,
+    members: [CURRENT_USER, DEMO_USERS[0]],
+    created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'chat_project_group',
+    type: 'group',
+    name: 'College Group (AI Capstone)',
+    description: 'Final semester research project & seminar team',
+    avatar_url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150&auto=format&fit=crop&q=80',
+    default_timer_seconds: 0,
+    ai_enabled: true,
+    has_ai_important: true,
+    unread_count: 2,
+    is_pinned: true,
+    members: [CURRENT_USER, DEMO_USERS[0], DEMO_USERS[1], DEMO_USERS[2]],
+    created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 10 * 60000).toISOString(),
+  },
+  {
+    id: 'chat_rahul_dm',
+    type: 'direct',
+    name: 'Rahul',
+    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    default_timer_seconds: 60, // Has 60-second default timer!
+    ai_enabled: true,
+    unread_count: 0,
+    is_pinned: false,
+    members: [CURRENT_USER, DEMO_USERS[1]],
+    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 25 * 60000).toISOString(),
+  },
+  {
+    id: 'chat_bhumika_dm',
+    type: 'direct',
+    name: 'Bhumika',
+    avatar_url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    default_timer_seconds: 0,
+    ai_enabled: true,
+    unread_count: 0,
+    is_pinned: false,
+    members: [CURRENT_USER, DEMO_USERS[2]],
+    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+  },
+  {
+    id: 'chat_ananya_dm',
+    type: 'direct',
+    name: 'Ananya',
+    avatar_url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
+    default_timer_seconds: 0,
+    ai_enabled: true,
+    unread_count: 0,
+    is_pinned: false,
+    is_archived: false,
+    members: [CURRENT_USER, DEMO_USERS[3]],
+    created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 8 * 3600000).toISOString(),
+  },
+];
+
+// Seed messages with:
+// 1. Normal conversation
+// 2. Important project deadline
+// 3. Kannada message ("ನೀನು ಕಾಲೇಜಿಗೆ ಬಂದಿದ್ದೀಯಾ?")
+// 4. Timed message (active countdown)
+// 5. AI memory suggestions
+export const SEED_MESSAGES: Record<string, Message[]> = {
+  chat_varsha_dm: [
+    {
+      id: 'msg_v1',
+      chat_id: 'chat_varsha_dm',
+      sender_id: 'usr_varsha_002',
+      content: 'Hey! Did you check the feedback from Prof. Rao on our model architecture?',
+      message_type: 'text',
+      status: 'read',
+      created_at: new Date(Date.now() - 4 * 3600000).toISOString(),
+    },
+    {
+      id: 'msg_v2',
+      chat_id: 'chat_varsha_dm',
+      sender_id: 'usr_me_001',
+      content: 'Yes! He approved the dual-layer neural network approach. Just asked us to benchmark latency.',
+      message_type: 'text',
+      status: 'read',
+      created_at: new Date(Date.now() - 3 * 3600000).toISOString(),
+    },
+    {
+      id: 'msg_v3',
+      chat_id: 'chat_varsha_dm',
+      sender_id: 'usr_varsha_002',
+      content: 'ನೀನು ಕಾಲೇಜಿಗೆ ಬಂದಿದ್ದೀಯಾ? (Have you come to college?)',
+      message_type: 'text',
+      status: 'read',
+      is_translated: true,
+      translated_content: 'Have you come to college?',
+      translated_language: 'kn',
+      created_at: new Date(Date.now() - 45 * 60000).toISOString(),
+    },
+    {
+      id: 'msg_v4',
+      chat_id: 'chat_varsha_dm',
+      sender_id: 'usr_varsha_002',
+      content: 'Tomorrow our project review is strictly scheduled at 10:00 AM in Seminar Hall 2. Make sure the deck is ready.',
+      message_type: 'text',
+      status: 'delivered',
+      is_starred: true,
+      ai_classification: {
+        id: 'ai_cls_1',
+        message_id: 'msg_v4',
+        classification: 'deadline',
+        confidence: 0.98,
+        extracted_data: {
+          title: 'Project Review with Prof. Rao',
+          event: 'Final Capstone Review',
+          date: 'Tomorrow (Oct 8)',
+          time: '10:00 AM',
+          priority: 'high',
+          action_item: 'Finalize presentation deck and arrive at Seminar Hall 2',
+        },
+        status: 'pending_review',
+      },
+      created_at: new Date(Date.now() - 10 * 60000).toISOString(),
+    },
+  ],
+
+  chat_project_group: [
+    {
+      id: 'msg_g1',
+      chat_id: 'chat_project_group',
+      sender_id: 'usr_rahul_003',
+      content: 'Hey team, I uploaded the UI wireframes to the shared drive.',
+      message_type: 'text',
+      status: 'read',
+      created_at: new Date(Date.now() - 24 * 3600000).toISOString(),
+    },
+    {
+      id: 'msg_g2',
+      chat_id: 'chat_project_group',
+      sender_id: 'usr_bhumika_004',
+      content: 'The presentation PPT needs completion before 6 PM today. Varsha will handle the introduction section.',
+      message_type: 'text',
+      status: 'read',
+      ai_classification: {
+        id: 'ai_cls_g2',
+        message_id: 'msg_g2',
+        classification: 'task',
+        confidence: 0.94,
+        extracted_data: {
+          title: 'Complete Presentation Deck',
+          date: 'Today',
+          time: '6:00 PM',
+          priority: 'high',
+          action_item: 'Complete PPT, assign intro to Varsha',
+        },
+        status: 'approved',
+      },
+      created_at: new Date(Date.now() - 5 * 3600000).toISOString(),
+    },
+    {
+      id: 'msg_g3',
+      chat_id: 'chat_project_group',
+      sender_id: 'usr_rahul_003',
+      content: 'Final review confirmed for Friday with the department head.',
+      message_type: 'text',
+      status: 'read',
+      created_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+    },
+    {
+      id: 'msg_g4',
+      chat_id: 'chat_project_group',
+      sender_id: 'usr_varsha_002',
+      content: 'Rahul, please ensure the live demo backend endpoint is deployed on Supabase edge functions.',
+      message_type: 'text',
+      status: 'read',
+      created_at: new Date(Date.now() - 15 * 60000).toISOString(),
+    },
+  ],
+
+  chat_rahul_dm: [
+    {
+      id: 'msg_r1',
+      chat_id: 'chat_rahul_dm',
+      sender_id: 'usr_me_001',
+      content: 'Rahul, did you get the secret API access key for our translation gateway?',
+      message_type: 'text',
+      status: 'read',
+      created_at: new Date(Date.now() - 30 * 60000).toISOString(),
+    },
+    {
+      id: 'msg_r2',
+      chat_id: 'chat_rahul_dm',
+      sender_id: 'usr_rahul_003',
+      content: 'Here is the staging passcode: #MIND-8842-ACCESS (Disappearing message)',
+      message_type: 'text',
+      status: 'read',
+      duration_seconds: 60,
+      expires_at: new Date(Date.now() + 42 * 1000).toISOString(), // 42 seconds left!
+      created_at: new Date(Date.now() - 18 * 1000).toISOString(),
+    },
+  ],
+
+  chat_bhumika_dm: [
+    {
+      id: 'msg_b1',
+      chat_id: 'chat_bhumika_dm',
+      sender_id: 'usr_bhumika_004',
+      content: 'ಪ್ರಬಂಧದ ಡ್ರಾಫ್ಟ್ ಸಿದ್ಧವಾಗಿದೆ. ಸಂಜೆ ಒಮ್ಮೆ ನೋಡೋಣವೇ?',
+      message_type: 'text',
+      status: 'read',
+      is_translated: true,
+      translated_content: 'The research paper draft is ready. Shall we review it this evening?',
+      translated_language: 'kn',
+      created_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+    },
+  ],
+
+  chat_ananya_dm: [
+    {
+      id: 'msg_a1',
+      chat_id: 'chat_ananya_dm',
+      sender_id: 'usr_ananya_005',
+      content: 'PostgreSQL schema with 22 tables and RLS policies is completely mapped and verified!',
+      message_type: 'text',
+      status: 'read',
+      created_at: new Date(Date.now() - 8 * 3600000).toISOString(),
+    },
+  ],
+};
+
+// Seed Approved AI Memories
+export const SEED_MEMORIES: AIMemory[] = [
+  {
+    id: 'mem_01',
+    user_id: 'usr_me_001',
+    title: 'Project Review with Prof. Rao',
+    category: 'deadlines',
+    content: 'Final Capstone Project Review strictly at 10:00 AM in Seminar Hall 2. Ensure slides and metrics are loaded.',
+    event_timestamp: new Date(Date.now() + 86400000).toISOString(),
+    source_chat_id: 'chat_varsha_dm',
+    source_chat_name: 'Varsha',
+    source_message_id: 'msg_v4',
+    created_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+    updated_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+  },
+  {
+    id: 'mem_02',
+    user_id: 'usr_me_001',
+    title: 'Final PPT Completion',
+    category: 'tasks',
+    content: 'Complete deck by 6:00 PM today. Introduction slides assigned to Varsha.',
+    event_timestamp: new Date(Date.now() + 4 * 3600000).toISOString(),
+    source_chat_id: 'chat_project_group',
+    source_chat_name: 'College Group (AI Capstone)',
+    source_message_id: 'msg_g2',
+    created_at: new Date(Date.now() - 5 * 3600000).toISOString(),
+    updated_at: new Date(Date.now() - 5 * 3600000).toISOString(),
+  },
+  {
+    id: 'mem_03',
+    user_id: 'usr_me_001',
+    title: 'Dual-Layer Architecture Approval',
+    category: 'decisions',
+    content: 'Prof. Rao confirmed dual-layer neural network approach; focus on edge latency benchmarks.',
+    event_timestamp: new Date(Date.now() - 86400000).toISOString(),
+    source_chat_id: 'chat_varsha_dm',
+    source_chat_name: 'Varsha',
+    source_message_id: 'msg_v2',
+    created_at: new Date(Date.now() - 24 * 3600000).toISOString(),
+    updated_at: new Date(Date.now() - 24 * 3600000).toISOString(),
+  },
+];
+
+// Seed Status Stories
+export const SEED_STATUSES: StatusItem[] = [
+  {
+    id: 'status_01',
+    user_id: 'usr_varsha_002',
+    user: DEMO_USERS[0],
+    content: 'Rehearsing for tomorrow 10 AM review! 🚀 All benchmarks are looking clean.',
+    media_type: 'text',
+    audience: 'contacts',
+    expires_at: new Date(Date.now() + 18 * 3600000).toISOString(),
+    views_count: 8,
+    created_at: new Date(Date.now() - 6 * 3600000).toISOString(),
+  },
+  {
+    id: 'status_02',
+    user_id: 'usr_rahul_003',
+    user: DEMO_USERS[1],
+    content: 'Designing MindChat original UI system. No WhatsApp clones allowed.',
+    media_type: 'text',
+    audience: 'contacts',
+    expires_at: new Date(Date.now() + 20 * 3600000).toISOString(),
+    views_count: 14,
+    created_at: new Date(Date.now() - 4 * 3600000).toISOString(),
+  },
+];
+
+// Seed Notifications
+export const SEED_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: 'notif_01',
+    user_id: 'usr_me_001',
+    type: 'ai_insight',
+    title: '✦ Potentially Important Detected',
+    content: 'Varsha mentioned: "Tomorrow our project review is at 10:00 AM". Review and save to memory?',
+    source_chat_id: 'chat_varsha_dm',
+    source_message_id: 'msg_v4',
+    is_read: false,
+    created_at: new Date(Date.now() - 10 * 60000).toISOString(),
+  },
+  {
+    id: 'notif_02',
+    user_id: 'usr_me_001',
+    type: 'deadline',
+    title: 'Upcoming Deadline',
+    content: 'Presentation PPT needs completion today at 6:00 PM.',
+    source_chat_id: 'chat_project_group',
+    is_read: false,
+    created_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+  },
+  {
+    id: 'notif_03',
+    user_id: 'usr_me_001',
+    type: 'message',
+    title: 'Varsha sent a message in Kannada',
+    content: 'ನೀನು ಕಾಲೇಜಿಗೆ ಬಂದಿದ್ದೀಯಾ? (Translated: Have you come to college?)',
+    source_chat_id: 'chat_varsha_dm',
+    is_read: true,
+    created_at: new Date(Date.now() - 45 * 60000).toISOString(),
+  },
+];
+
+// Seed Streaks
+export const SEED_STREAKS: Record<string, ChatStreak> = {
+  chat_varsha_dm: {
+    id: 'strk_01',
+    chat_id: 'chat_varsha_dm',
+    streak_count: 12, // 🔥 12 days streak as requested!
+    last_interaction_date: new Date().toISOString().split('T')[0],
+    milestone_hit: 7,
+    is_enabled: true,
+  },
+  chat_project_group: {
+    id: 'strk_02',
+    chat_id: 'chat_project_group',
+    streak_count: 6,
+    last_interaction_date: new Date().toISOString().split('T')[0],
+    milestone_hit: 0,
+    is_enabled: true,
+  },
+};
+
+// Seed Privacy Settings
+export const DEFAULT_PRIVACY: PrivacySettings = {
+  user_id: 'usr_me_001',
+  see_profile_photo: 'everyone',
+  see_online_status: 'everyone',
+  see_last_seen: 'contacts',
+  see_about: 'everyone',
+  see_status: 'contacts',
+  read_receipts_enabled: true,
+  streaks_enabled: true,
+  default_timer_seconds: 0,
+  ai_chat_analysis_enabled: true,
+  ai_memory_suggestions_enabled: true,
+  ai_summaries_enabled: true,
+  ai_search_enabled: true,
+};
+
+// Seed Call Records for Dial-style Call List
+export const SEED_CALLS: CallRecord[] = [
+  {
+    id: 'call_01',
+    caller_id: 'usr_varsha_002',
+    receiver_id: 'usr_me_001',
+    call_type: 'voice',
+    status: 'completed',
+    duration_seconds: 245, // 4m 05s
+    created_at: new Date(Date.now() - 2 * 3600000).toISOString(),
+    caller: DEMO_USERS[0],
+    receiver: CURRENT_USER,
+  },
+  {
+    id: 'call_02',
+    caller_id: 'usr_sharma_006',
+    receiver_id: 'usr_me_001',
+    call_type: 'video',
+    status: 'missed',
+    duration_seconds: 0,
+    created_at: new Date(Date.now() - 5 * 3600000).toISOString(),
+    caller: DEMO_USERS[4],
+    receiver: CURRENT_USER,
+  },
+  {
+    id: 'call_03',
+    caller_id: 'usr_me_001',
+    receiver_id: 'usr_rahul_003',
+    call_type: 'video',
+    status: 'completed',
+    duration_seconds: 732, // 12m 12s
+    created_at: new Date(Date.now() - 26 * 3600000).toISOString(),
+    caller: CURRENT_USER,
+    receiver: DEMO_USERS[1],
+  },
+  {
+    id: 'call_04',
+    caller_id: 'usr_bhumika_004',
+    receiver_id: 'usr_me_001',
+    call_type: 'voice',
+    status: 'completed',
+    duration_seconds: 115, // 1m 55s
+    created_at: new Date(Date.now() - 48 * 3600000).toISOString(),
+    caller: DEMO_USERS[2],
+    receiver: CURRENT_USER,
+  },
+  {
+    id: 'call_05',
+    caller_id: 'usr_me_001',
+    receiver_id: 'usr_varsha_002',
+    call_type: 'voice',
+    status: 'rejected',
+    duration_seconds: 0,
+    created_at: new Date(Date.now() - 72 * 3600000).toISOString(),
+    caller: CURRENT_USER,
+    receiver: DEMO_USERS[0],
+  },
+];
+
+// Seed Scheduled Messages
+export const SEED_SCHEDULED_MESSAGES: ScheduledMessage[] = [
+  {
+    id: 'sched_01',
+    chat_id: 'chat_varsha_dm',
+    sender_id: 'usr_me_001',
+    content: 'Happy Birthday! Wishing you a wonderful year ahead filled with joy and success! 🎂🎉',
+    message_type: 'text',
+    scheduled_for: new Date(Date.now() + 4 * 3600000).toISOString(), // 4 hours later
+    timezone: 'Asia/Kolkata',
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    chat_name: 'Varsha',
+  },
+  {
+    id: 'sched_02',
+    chat_id: 'chat_project_group',
+    sender_id: 'usr_me_001',
+    content: 'Reminder: Project review slides final dry-run today at Seminar Hall 2.',
+    message_type: 'text',
+    scheduled_for: new Date(Date.now() + 18 * 3600000).toISOString(),
+    timezone: 'Asia/Kolkata',
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    chat_name: 'Final Year AI Project',
+  },
+];
+
