@@ -12,6 +12,7 @@ import { CallsView } from './components/calling/CallsView';
 import { AIMemoryView } from './components/ai/AIMemoryView';
 import { AIInsightsDashboard } from './components/ai/AIInsightsDashboard';
 import { ContactsView } from './components/contacts/ContactsView';
+import { AIGroupCatchUpView } from './components/catchup/AIGroupCatchUpView';
 import { StarredView } from './components/starred/StarredView';
 import { NotificationCenter } from './components/notifications/NotificationCenter';
 import { SettingsView } from './components/settings/SettingsView';
@@ -172,6 +173,16 @@ const MindChatAppContent: React.FC = () => {
             />
           )}
 
+          {activeTab === 'catchup' && (
+            <AIGroupCatchUpView
+              onOpenChat={chatId => {
+                selectChat(chatId);
+                setActiveTab('chats');
+              }}
+              onJumpToMessage={handleJumpToMessage}
+            />
+          )}
+
           {activeTab === 'calls' && (
             <CallsView
               onStartCall={handleStartCall}
@@ -184,8 +195,7 @@ const MindChatAppContent: React.FC = () => {
 
           {activeTab === 'contacts' && (
             <ContactsView
-              onStartDirectChat={async contact => {
-                await startDirectChat(contact);
+              onStartDirectChat={_contact => {
                 setActiveTab('chats');
               }}
             />

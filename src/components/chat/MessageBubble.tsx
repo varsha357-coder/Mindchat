@@ -27,7 +27,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   isHighlighted = false,
   onReply,
 }) => {
-  const { toggleStar, isMessageStarred, deleteMessage, addReaction, translateMessage } = useChat();
+  const { toggleStar, isMessageStarred, deleteMessage, addReaction, translateMessage, retrySendMessage } = useChat();
   const { approveMemory, dismissMemory } = useAI();
   const { currentUser } = useAuth();
 
@@ -285,6 +285,25 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </div>
           )}
 
+          {/* Failed Message Error & Retry Banner */}
+          {message.status === 'failed' && (
+            <div className="mt-2 pt-1.5 border-t border-danger/30 text-[11px] text-danger flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1 min-w-0">
+                <AlertCircle size={13} className="shrink-0" />
+                <span className="truncate">{message.error || 'Failed to send to database'}</span>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  retrySendMessage(message.id);
+                }}
+                className="font-bold underline text-danger hover:text-danger-hover shrink-0 cursor-pointer text-xs"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Footer: Time + Status Ticks + Star */}
           <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] text-text-muted select-none">
             {isStarred && (
@@ -293,16 +312,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <span>{formatTime(message.created_at)}</span>
 
             {isSender && (
-              <span 
-                className="flex items-center" 
-                title={message.status === 'read' ? 'Read' : message.status === 'delivered' ? 'Delivered' : 'Sent'}
-              >
-                {message.status === 'read' ? (
-                  <CheckCheck size={14} className="text-secondary" />
+              <span className="flex items-center">
+                {message.status === 'sending' ? (
+                  <span className="flex items-center gap-1 text-[10px] text-text-muted" title="Sending...">
+                    <Clock size={11} className="animate-spin text-primary" />
+                    <span>Sending</span>
+                  </span>
+                ) : message.status === 'failed' ? (
+                  <span className="text-danger flex items-center" title="Failed to send">
+                    <AlertCircle size={13} />
+                  </span>
+                ) : message.status === 'read' ? (
+                  <span title="Read">
+                    <CheckCheck size={14} className="text-secondary" />
+                  </span>
                 ) : message.status === 'delivered' ? (
-                  <CheckCheck size={14} className="text-text-muted" />
+                  <span title="Delivered">
+                    <CheckCheck size={14} className="text-text-muted" />
+                  </span>
                 ) : (
-                  <Check size={14} className="text-text-muted" />
+                  <span title="Sent">
+                    <Check size={14} className="text-text-muted" />
+                  </span>
                 )}
               </span>
             )}

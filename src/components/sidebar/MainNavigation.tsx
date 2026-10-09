@@ -7,8 +7,11 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useChat } from '../../contexts/ChatContext';
 import { useAuth } from '../../contexts/AuthContext';
 
+import { GroupCatchUpIcon } from '../catchup/GroupCatchUpIcon';
+
 export type ActiveNavTab = 
   | 'chats' 
+  | 'catchup'
   | 'calls'
   | 'contacts' 
   | 'memory' 
@@ -35,14 +38,22 @@ export const MainNavigation: React.FC<MainNavigationProps> = ({
   onOpenConnectSupabase,
 }) => {
   const { theme, toggleTheme } = useTheme();
-  const { notifications, callRecords } = useChat();
+  const { notifications, callRecords, chats } = useChat();
   const { logout, isBackendConnected } = useAuth();
 
   const unreadNotifCount = notifications.filter(n => !n.is_read).length;
   const missedCallCount = callRecords.filter(r => r.status === 'missed').length;
+  const unreadGroupCount = chats.filter(c => c.type === 'group' && (c.unread_count || 0) > 0).length;
 
   const navItems = [
     { id: 'chats', label: 'Chats', icon: MessageSquare },
+    { 
+      id: 'catchup', 
+      label: 'AI Group Catch-Up', 
+      icon: GroupCatchUpIcon, 
+      count: unreadGroupCount > 0 ? unreadGroupCount : undefined,
+      badgeText: unreadGroupCount === 0 ? 'AI' : undefined 
+    },
     { id: 'calls', label: 'Calls', icon: Phone, count: missedCallCount > 0 ? missedCallCount : undefined },
     { id: 'contacts', label: 'Contacts', icon: Users },
     { id: 'memory', label: 'AI Memory', icon: Brain, badgeText: '✦' },

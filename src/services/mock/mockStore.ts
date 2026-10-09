@@ -24,13 +24,24 @@ class MockDataStore extends EventTarget {
   private starredMessageIds: string[] = [];
   private callRecords: CallRecord[] = [];
   private scheduledMessages: ScheduledMessage[] = [];
+  private broadcastChannel: BroadcastChannel | null = null;
 
   constructor() {
     super();
     this.currentUser = this.load('mindchat_user', CURRENT_USER);
     this.contacts = this.load('mindchat_contacts', DEMO_USERS);
     this.chats = this.load('mindchat_chats', SEED_CHATS);
+    SEED_CHATS.forEach(sc => {
+      if (!this.chats.some(c => c.id === sc.id)) {
+        this.chats.push(sc);
+      }
+    });
     this.messages = this.load('mindchat_messages', SEED_MESSAGES);
+    Object.keys(SEED_MESSAGES).forEach(cId => {
+      if (!this.messages[cId]) {
+        this.messages[cId] = SEED_MESSAGES[cId];
+      }
+    });
     this.memories = this.load('mindchat_memories', SEED_MEMORIES);
     this.statuses = this.load('mindchat_statuses', SEED_STATUSES);
     this.notifications = this.load('mindchat_notifications', SEED_NOTIFICATIONS);
@@ -49,8 +60,56 @@ class MockDataStore extends EventTarget {
     this.callRecords = this.load('mindchat_call_records', SEED_CALLS);
     this.scheduledMessages = this.load('mindchat_scheduled_messages', SEED_SCHEDULED_MESSAGES);
 
+    // Cross-tab real-time synchronization
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        this.broadcastChannel = new BroadcastChannel('mindchat_cross_tab_realtime');
+        this.broadcastChannel.onmessage = (event) => {
+          const { type, detail } = event.data || {};
+          this.syncFromStorage();
+          this.dispatchEvent(new CustomEvent(type || 'change', { detail }));
+          this.dispatchEvent(new CustomEvent('change'));
+        };
+      } catch (e) {
+        console.warn('BroadcastChannel not available:', e);
+      }
+
+      window.addEventListener('storage', (e) => {
+        if (e.key && e.key.startsWith('mindchat_')) {
+          this.syncFromStorage();
+          this.dispatchEvent(new CustomEvent('change'));
+          this.dispatchEvent(new CustomEvent('messages_updated'));
+        }
+      });
+    }
+
     // Set up timer check interval for disappearing & scheduled messages
     this.initTimerEngine();
+  }
+
+  public syncFromStorage() {
+    this.currentUser = this.load('mindchat_user', CURRENT_USER);
+    this.chats = this.load('mindchat_chats', SEED_CHATS);
+    SEED_CHATS.forEach(sc => {
+      if (!this.chats.some(c => c.id === sc.id)) {
+        this.chats.push(sc);
+      }
+    });
+    this.messages = this.load('mindchat_messages', SEED_MESSAGES);
+    Object.keys(SEED_MESSAGES).forEach(cId => {
+      if (!this.messages[cId]) {
+        this.messages[cId] = SEED_MESSAGES[cId];
+      }
+    });
+    this.memories = this.load('mindchat_memories', SEED_MEMORIES);
+    this.statuses = this.load('mindchat_statuses', SEED_STATUSES);
+    this.notifications = this.load('mindchat_notifications', SEED_NOTIFICATIONS);
+    this.streaks = this.load('mindchat_streaks', SEED_STREAKS);
+    this.privacy = this.load('mindchat_privacy', DEFAULT_PRIVACY);
+    this.blockedUserIds = this.load('mindchat_blocked', []);
+    this.starredMessageIds = this.load('mindchat_starred_ids', []);
+    this.callRecords = this.load('mindchat_call_records', SEED_CALLS);
+    this.scheduledMessages = this.load('mindchat_scheduled_messages', SEED_SCHEDULED_MESSAGES);
   }
 
   private load<T>(key: string, fallback: T): T {
@@ -74,6 +133,13 @@ class MockDataStore extends EventTarget {
   private notify(event: string, detail?: any) {
     this.dispatchEvent(new CustomEvent(event, { detail }));
     this.dispatchEvent(new CustomEvent('change'));
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({ type: event, detail });
+      } catch (err) {
+        // ignore
+      }
+    }
   }
 
   // --- Disappearing & Scheduled Messages Engine ---

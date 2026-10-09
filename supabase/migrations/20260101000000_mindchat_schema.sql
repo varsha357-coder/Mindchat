@@ -213,15 +213,21 @@ CREATE TABLE IF NOT EXISTS public.ai_memories (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 18. CHAT_SUMMARIES
+-- 18. CHAT_SUMMARIES (AI Group Catch-Up & Conversation Digest Caching)
 CREATE TABLE IF NOT EXISTS public.chat_summaries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     chat_id UUID NOT NULL REFERENCES public.chats(id) ON DELETE CASCADE,
     requested_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    period_type TEXT NOT NULL CHECK (period_type IN ('today', '7_days', 'custom', 'entire')),
-    summary_content JSONB NOT NULL, -- { "topics": [...], "decisions": [...], "tasks": [...], "action_items": [...] }
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    period_type TEXT NOT NULL CHECK (period_type IN ('since_last_visit', 'unread', 'last_24h', 'last_7d', 'custom', 'entire', 'today', '7_days')),
+    summary_content JSONB NOT NULL, -- { "lines": [...], "topics": [...], "decisions": [...], "tasks": [...], "deadlines": [...], "unresolved": [...], "next_steps": [...], "source_messages": [...] }
+    last_included_message_id UUID REFERENCES public.messages(id) ON DELETE SET NULL,
+    last_included_timestamp TIMESTAMPTZ,
+    version INTEGER DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_chat_summaries_lookup ON public.chat_summaries(chat_id, requested_by, period_type);
+
 
 -- 19. TASKS (Extracted action items)
 CREATE TABLE IF NOT EXISTS public.tasks (
@@ -328,28 +334,39 @@ CREATE POLICY "Users can view contacts" ON public.contacts FOR SELECT USING (aut
 CREATE POLICY "Users can insert contacts" ON public.contacts FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can delete contacts" ON public.contacts FOR DELETE USING (auth.uid() = user_id);
 
+-- Helper function to avoid RLS recursion on chat_members
+CREATE OR REPLACE FUNCTION public.is_chat_member(p_chat_id UUID, p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.chat_members
+    WHERE chat_id = p_chat_id AND user_id = p_user_id
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Chats
 CREATE POLICY "Members can view their chats" ON public.chats FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.chat_id = chats.id AND chat_members.user_id = auth.uid())
+    public.is_chat_member(id, auth.uid())
 );
 CREATE POLICY "Authenticated users can create chats" ON public.chats FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY "Members can update their chats" ON public.chats FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.chat_id = chats.id AND chat_members.user_id = auth.uid())
+    public.is_chat_member(id, auth.uid())
 );
 
 -- Chat Members: Members can view members of chats they belong to
 CREATE POLICY "Members can view members of their chats" ON public.chat_members FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.chat_members cm WHERE cm.chat_id = chat_members.chat_id AND cm.user_id = auth.uid())
+    user_id = auth.uid() OR public.is_chat_member(chat_id, auth.uid())
 );
 CREATE POLICY "Users can insert membership" ON public.chat_members FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Messages: Only chat members can read/send messages
 CREATE POLICY "Members can read chat messages" ON public.messages FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.chat_id = messages.chat_id AND chat_members.user_id = auth.uid())
+    public.is_chat_member(chat_id, auth.uid())
 );
 CREATE POLICY "Members can send messages" ON public.messages FOR INSERT WITH CHECK (
     auth.uid() = sender_id AND
-    EXISTS (SELECT 1 FROM public.chat_members WHERE chat_members.chat_id = messages.chat_id AND chat_members.user_id = auth.uid())
+    public.is_chat_member(chat_id, auth.uid())
 );
 CREATE POLICY "Senders can edit their messages" ON public.messages FOR UPDATE USING (auth.uid() = sender_id);
 CREATE POLICY "Senders can delete their messages" ON public.messages FOR DELETE USING (auth.uid() = sender_id);
@@ -367,6 +384,20 @@ CREATE POLICY "Users can update their privacy settings" ON public.privacy_settin
 
 -- Notifications: Strictly private to user
 CREATE POLICY "Users can only access their notifications" ON public.notifications FOR ALL USING (auth.uid() = user_id);
+
+-- Chat Summaries: Only authorized chat members can view or manage
+CREATE POLICY "Members can view chat summaries" ON public.chat_summaries FOR SELECT USING (
+    public.is_chat_member(chat_id, auth.uid())
+);
+CREATE POLICY "Members can create chat summaries" ON public.chat_summaries FOR INSERT WITH CHECK (
+    auth.uid() = requested_by AND public.is_chat_member(chat_id, auth.uid())
+);
+CREATE POLICY "Members can update their chat summaries" ON public.chat_summaries FOR UPDATE USING (
+    auth.uid() = requested_by AND public.is_chat_member(chat_id, auth.uid())
+);
+CREATE POLICY "Members can delete their chat summaries" ON public.chat_summaries FOR DELETE USING (
+    auth.uid() = requested_by AND public.is_chat_member(chat_id, auth.uid())
+);
 
 -- ==============================================================================
 -- AUTOMATIC PROFILE CREATION TRIGGER FOR AUTH USERS

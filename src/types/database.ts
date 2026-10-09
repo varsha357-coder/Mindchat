@@ -55,7 +55,7 @@ export interface Chat {
 }
 
 export type MessageType = 'text' | 'image' | 'document' | 'voice' | 'video' | 'system';
-export type MessageStatus = 'sent' | 'delivered' | 'read';
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface MessageReaction {
   id: string;
@@ -71,6 +71,7 @@ export interface Message {
   content: string;
   message_type: MessageType;
   status?: MessageStatus;
+  error?: string;
   reply_to_message_id?: string;
   reply_to?: Message;
   is_starred?: boolean;

@@ -14,8 +14,7 @@ export function getSavedSupabaseConfig() {
   const isValid = Boolean(
     url &&
     key &&
-    url.startsWith('https://') &&
-    url.includes('supabase.co') &&
+    (url.startsWith('https://') || url.startsWith('http://localhost')) &&
     !url.includes('your-project-id')
   );
 
@@ -25,20 +24,24 @@ export function getSavedSupabaseConfig() {
 let activeClient: SupabaseClient | null = null;
 const initialConfig = getSavedSupabaseConfig();
 
+function createMindChatSupabaseClient(url: string, key: string): SupabaseClient {
+  return createClient(url, key, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  });
+}
+
 if (initialConfig.isValid) {
   try {
-    activeClient = createClient(initialConfig.url, initialConfig.key, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-      realtime: {
-        params: {
-          eventsPerSecond: 10,
-        },
-      },
-    });
+    activeClient = createMindChatSupabaseClient(initialConfig.url, initialConfig.key);
   } catch (err) {
     console.warn('Failed to initialize Supabase client:', err);
     activeClient = null;
@@ -46,6 +49,16 @@ if (initialConfig.isValid) {
 }
 
 export function getSupabase(): SupabaseClient | null {
+  if (!activeClient) {
+    const cfg = getSavedSupabaseConfig();
+    if (cfg.isValid) {
+      try {
+        activeClient = createMindChatSupabaseClient(cfg.url, cfg.key);
+      } catch (e) {
+        console.warn('Error lazy-initializing Supabase client:', e);
+      }
+    }
+  }
   return activeClient;
 }
 
@@ -53,7 +66,8 @@ export const supabase: SupabaseClient | null = activeClient;
 
 export function isSupabaseConnected(): boolean {
   const cfg = getSavedSupabaseConfig();
-  return cfg.isValid && activeClient !== null;
+  const client = getSupabase();
+  return cfg.isValid && client !== null;
 }
 
 export function setSupabaseCredentials(url: string, key: string): boolean {
@@ -61,16 +75,11 @@ export function setSupabaseCredentials(url: string, key: string): boolean {
     const cleanUrl = url.trim();
     const cleanKey = key.trim();
 
-    if (!cleanUrl.startsWith('https://') || !cleanUrl.includes('supabase.co') || !cleanKey) {
+    if ((!cleanUrl.startsWith('https://') && !cleanUrl.startsWith('http://localhost')) || !cleanKey) {
       throw new Error('Please enter a valid Supabase Project URL (https://xxxx.supabase.co) and Anon Key.');
     }
 
-    const newClient = createClient(cleanUrl, cleanKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-    });
+    const newClient = createMindChatSupabaseClient(cleanUrl, cleanKey);
 
     localStorage.setItem('mindchat_supabase_url', cleanUrl);
     localStorage.setItem('mindchat_supabase_anon_key', cleanKey);

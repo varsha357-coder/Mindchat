@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { 
   Chat, Message, Profile, StatusItem, NotificationItem, 
-  PrivacySettings, ChatStreak, CallRecord, ScheduledMessage, StarredMessageEntry 
+  PrivacySettings, ChatStreak, CallRecord, ScheduledMessage, StarredMessageEntry,
+  MessageReaction, AIClassification
 } from '../types/database';
 import { mockStore } from '../services/mock/mockStore';
 import { translationService } from '../services/translation/indicTranslator';
@@ -61,6 +62,7 @@ interface ChatContextType {
     deleteAfterRead?: boolean;
     replyToMessageId?: string;
   }) => Promise<Message>;
+  retrySendMessage: (messageId: string) => Promise<void>;
   editMessage: (messageId: string, newContent: string) => void;
   deleteMessage: (messageId: string) => void;
   addReaction: (messageId: string, emoji: string) => void;
@@ -86,14 +88,25 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { currentUser, isBackendConnected } = useAuth();
 
   const initialChats = mockStore.getChats();
-  const initialChatId = initialChats.length > 0 ? initialChats[0].id : null;
+  const savedActiveChatId = typeof window !== 'undefined' ? localStorage.getItem('mindchat_active_chat_id') : null;
+  const initialChatId = (savedActiveChatId && initialChats.some(c => c.id === savedActiveChatId))
+    ? savedActiveChatId
+    : (initialChats.length > 0 ? initialChats[0].id : null);
 
   const [chats, setChats] = useState<Chat[]>(initialChats);
   const [activeChatId, setActiveChatId] = useState<string | null>(initialChatId);
   const [messages, setMessages] = useState<Message[]>(() => {
     return initialChatId ? mockStore.getMessages(initialChatId) : [];
   });
-  const [allMessages, setAllMessages] = useState<Record<string, Message[]>>({});
+  const [allMessages, setAllMessages] = useState<Record<string, Message[]>>(() => {
+    const all: Record<string, Message[]> = {};
+    if (!isSupabaseConnected()) {
+      initialChats.forEach(c => {
+        all[c.id] = mockStore.getMessages(c.id);
+      });
+    }
+    return all;
+  });
   const [contacts, setContacts] = useState<Profile[]>(() => mockStore.getContacts());
   const [blockedContacts, setBlockedContacts] = useState<Profile[]>(() => mockStore.getBlockedContacts());
   const [statuses, setStatuses] = useState<StatusItem[]>(() => mockStore.getStatuses());
@@ -128,7 +141,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .select('chat_id, role, is_pinned, is_archived')
         .eq('user_id', currentUser.id);
 
-      if (mErr || !memberRows || memberRows.length === 0) {
+      if (mErr) {
+        console.error('Error fetching chat members:', mErr);
+        return;
+      }
+
+      if (!memberRows || memberRows.length === 0) {
+        // User has no remote chats yet
+        setChats([]);
+        setActiveChatId(null);
+        setMessages([]);
         return;
       }
 
@@ -193,8 +215,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       setChats(formattedChats);
-      if (formattedChats.length > 0 && !activeChatId) {
-        setActiveChatId(formattedChats[0].id);
+
+      const savedId = typeof window !== 'undefined' ? localStorage.getItem('mindchat_active_chat_id') : null;
+      const targetId = (savedId && formattedChats.some(c => c.id === savedId))
+        ? savedId
+        : (formattedChats.length > 0 ? formattedChats[0].id : null);
+
+      if (targetId) {
+        setActiveChatId(targetId);
+        fetchSupabaseMessages(targetId);
       }
     } catch (e) {
       console.error('Error fetching Supabase chats:', e);
@@ -212,12 +241,71 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('chat_id', chatId)
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
-        const mapped = (data as Message[]).map(m => ({
-          ...m,
-          is_starred: starredMessageIds.includes(m.id) || m.is_starred,
-        }));
+      if (error) {
+        console.error('Error fetching messages from Supabase:', error);
+        return;
+      }
+
+      if (data) {
+        const rawMsgs = data as Message[];
+        const msgIds = rawMsgs.map(m => m.id);
+
+        // Fetch reactions for these messages
+        let reactionsByMsgId: Record<string, MessageReaction[]> = {};
+        if (msgIds.length > 0) {
+          try {
+            const { data: reactionData } = await client
+              .from('message_reactions')
+              .select('*')
+              .in('message_id', msgIds);
+            if (reactionData) {
+              reactionData.forEach((r: any) => {
+                if (!reactionsByMsgId[r.message_id]) reactionsByMsgId[r.message_id] = [];
+                reactionsByMsgId[r.message_id].push(r);
+              });
+            }
+          } catch {
+            // ignore if table not present
+          }
+        }
+
+        // Fetch AI classifications
+        let aiClsByMsgId: Record<string, AIClassification> = {};
+        if (msgIds.length > 0) {
+          try {
+            const { data: aiData } = await client
+              .from('ai_classifications')
+              .select('*')
+              .in('message_id', msgIds);
+            if (aiData) {
+              aiData.forEach((a: any) => {
+                aiClsByMsgId[a.message_id] = a;
+              });
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        const msgMap = new Map(rawMsgs.map(m => [m.id, m]));
+
+        const mapped: Message[] = rawMsgs.map(m => {
+          const replyTarget = m.reply_to_message_id ? msgMap.get(m.reply_to_message_id) : undefined;
+          return {
+            ...m,
+            status: m.status || 'sent',
+            is_starred: starredMessageIds.includes(m.id) || m.is_starred || false,
+            reply_to: replyTarget,
+            reactions: reactionsByMsgId[m.id] || [],
+            ai_classification: aiClsByMsgId[m.id] || m.ai_classification,
+          };
+        });
+
         setMessages(mapped);
+        setAllMessages(prev => ({
+          ...prev,
+          [chatId]: mapped,
+        }));
       }
     } catch (e) {
       console.error('Error fetching messages from Supabase:', e);
@@ -373,10 +461,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setScheduledMessages(mockStore.getScheduledMessages());
   }, [currentUser.id]);
 
+  // Fetch remote registered profiles/contacts
+  const fetchSupabaseContacts = useCallback(async () => {
+    const client = getSupabase();
+    if (!client || !isSupabaseConnected() || !currentUser.id) return;
+    try {
+      const { data, error } = await client
+        .from('profiles')
+        .select('*')
+        .neq('id', currentUser.id)
+        .order('display_name', { ascending: true })
+        .limit(50);
+      if (!error && data && data.length > 0) {
+        setContacts(data as Profile[]);
+      }
+    } catch (e) {
+      console.warn('Error fetching Supabase contacts:', e);
+    }
+  }, [currentUser.id]);
+
   // Initial Sync & Realtime Setup
   useEffect(() => {
     if (isSupabaseConnected()) {
       fetchSupabaseChats();
+      fetchSupabaseContacts();
       fetchStarredMessages();
       fetchCallRecords();
       fetchScheduledMessages();
@@ -391,11 +499,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fetchCallRecords();
       fetchScheduledMessages();
 
-      if (activeChatId) {
-        setMessages([...mockStore.getMessages(activeChatId)]);
+      const savedChatId = typeof window !== 'undefined' ? localStorage.getItem('mindchat_active_chat_id') : null;
+      const targetId = (savedChatId && mockStore.getChats().some(c => c.id === savedChatId))
+        ? savedChatId
+        : (mockStore.getChats().length > 0 ? mockStore.getChats()[0].id : null);
+
+      if (targetId) {
+        setActiveChatId(targetId);
+        setMessages([...mockStore.getMessages(targetId)]);
       }
     }
-  }, [isBackendConnected, currentUser.id, fetchStarredMessages, fetchCallRecords, fetchScheduledMessages]);
+  }, [isBackendConnected, currentUser.id, fetchSupabaseContacts, fetchStarredMessages, fetchCallRecords, fetchScheduledMessages]);
 
   // Periodic server-side scheduled delivery check (every 30s)
   useEffect(() => {
@@ -417,17 +531,61 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'messages',
           filter: `chat_id=eq.${activeChatId}`,
         },
         payload => {
-          const newMsg = payload.new as Message;
-          setMessages(prev => {
-            if (prev.some(m => m.id === newMsg.id)) return prev;
-            return [...prev, { ...newMsg, is_starred: starredMessageIds.includes(newMsg.id) }];
-          });
+          if (payload.eventType === 'INSERT') {
+            const newMsg = payload.new as Message;
+            setMessages(prev => {
+              if (prev.some(m => m.id === newMsg.id)) return prev;
+              const optIndex = prev.findIndex(
+                m => m.status === 'sending' && m.content === newMsg.content && m.sender_id === newMsg.sender_id
+              );
+              if (optIndex !== -1) {
+                const next = [...prev];
+                next[optIndex] = {
+                  ...newMsg,
+                  status: 'sent',
+                  is_starred: starredMessageIds.includes(newMsg.id),
+                };
+                return next;
+              }
+              return [...prev, { ...newMsg, status: 'delivered', is_starred: starredMessageIds.includes(newMsg.id) }];
+            });
+
+            setAllMessages(prev => ({
+              ...prev,
+              [activeChatId]: [
+                ...(prev[activeChatId] || []).filter(m => m.id !== newMsg.id),
+                { ...newMsg, status: 'delivered', is_starred: starredMessageIds.includes(newMsg.id) },
+              ],
+            }));
+
+            setChats(prev => prev.map(c => c.id === activeChatId ? {
+              ...c,
+              last_message: newMsg,
+              updated_at: new Date().toISOString(),
+            } : c));
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedMsg = payload.new as Message;
+            setMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
+            setAllMessages(prev => ({
+              ...prev,
+              [activeChatId]: (prev[activeChatId] || []).map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m),
+            }));
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as any)?.id;
+            if (deletedId) {
+              setMessages(prev => prev.filter(m => m.id !== deletedId));
+              setAllMessages(prev => ({
+                ...prev,
+                [activeChatId]: (prev[activeChatId] || []).filter(m => m.id !== deletedId),
+              }));
+            }
+          }
         }
       )
       .subscribe();
@@ -435,7 +593,43 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       client.removeChannel(channel);
     };
-  }, [activeChatId, isBackendConnected, starredMessageIds]);
+  }, [activeChatId, isBackendConnected]);
+
+  // Global Realtime listener for incoming messages across all chats
+  useEffect(() => {
+    const client = getSupabase();
+    if (!client || !isSupabaseConnected() || !currentUser.id) return;
+
+    const globalChannel = client.channel(`realtime-global-messages-${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        payload => {
+          const newMsg = payload.new as Message;
+          setChats(prev => prev.map(c => {
+            if (c.id === newMsg.chat_id) {
+              const isUnread = newMsg.sender_id !== currentUser.id && newMsg.chat_id !== activeChatId;
+              return {
+                ...c,
+                last_message: newMsg,
+                unread_count: isUnread ? (c.unread_count || 0) + 1 : c.unread_count,
+                updated_at: new Date().toISOString(),
+              };
+            }
+            return c;
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      client.removeChannel(globalChannel);
+    };
+  }, [isBackendConnected, currentUser.id, activeChatId]);
 
   // Fallback store event subscriptions for Local / Demo mode
   useEffect(() => {
@@ -482,10 +676,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const selectChat = (chatId: string) => {
     setActiveChatId(chatId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mindchat_active_chat_id', chatId);
+    }
     if (isSupabaseConnected()) {
       fetchSupabaseMessages(chatId);
     } else {
-      setMessages(mockStore.getMessages(chatId));
+      const msgs = mockStore.getMessages(chatId);
+      setMessages(msgs);
+      setAllMessages(prev => ({
+        ...prev,
+        [chatId]: msgs,
+      }));
     }
   };
 
@@ -760,59 +962,210 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteAfterRead?: boolean;
     replyToMessageId?: string;
   }): Promise<Message> => {
-    if (!activeChatId) throw new Error('No active chat');
+    if (!activeChatId) throw new Error('No active conversation selected.');
+
+    const cleanContent = content.trim();
+    if (!cleanContent) throw new Error('Message content cannot be empty.');
 
     const duration = options?.durationSeconds || activeChat?.default_timer_seconds || 0;
     const expiresAt = duration > 0 ? new Date(Date.now() + duration * 1000).toISOString() : undefined;
 
     // AI Classification check
-    const aiAnalysis = analyzeMessageWithAI(content);
+    const aiAnalysis = analyzeMessageWithAI(cleanContent);
+
+    // 1. Create temporary optimistic message
+    const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const replyTarget = options?.replyToMessageId 
+      ? messages.find(m => m.id === options.replyToMessageId)
+      : undefined;
+
+    const optimisticMsg: Message = {
+      id: tempId,
+      chat_id: activeChatId,
+      sender_id: currentUser.id,
+      content: cleanContent,
+      message_type: options?.messageType || 'text',
+      status: 'sending',
+      reply_to_message_id: options?.replyToMessageId,
+      reply_to: replyTarget,
+      duration_seconds: duration > 0 ? duration : undefined,
+      expires_at: expiresAt,
+      delete_after_read: options?.deleteAfterRead || false,
+      created_at: new Date().toISOString(),
+    };
+
+    if (aiAnalysis.isImportant) {
+      optimisticMsg.ai_classification = {
+        id: 'ai_temp_' + tempId,
+        message_id: tempId,
+        classification: aiAnalysis.classification,
+        confidence: aiAnalysis.confidence,
+        extracted_data: aiAnalysis.extractedData,
+        status: 'pending_review',
+      };
+    }
+
+    // Immediately display in current conversation
+    setMessages(prev => [...prev, optimisticMsg]);
+    setAllMessages(prev => ({
+      ...prev,
+      [activeChatId]: [...(prev[activeChatId] || []), optimisticMsg],
+    }));
 
     const client = getSupabase();
     if (client && isSupabaseConnected()) {
-      const msgPayload: any = {
-        chat_id: activeChatId,
-        sender_id: currentUser.id,
-        content,
-        message_type: options?.messageType || 'text',
-        expires_at: expiresAt,
-        delete_after_read: options?.deleteAfterRead || false,
-        reply_to_message_id: options?.replyToMessageId || null,
-      };
+      try {
+        let targetChatId = activeChatId;
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetChatId);
 
-      const { data, error } = await client
-        .from('messages')
-        .insert(msgPayload)
-        .select()
-        .single();
+        if (!isUuid) {
+          // If activeChatId is not a UUID, resolve to a real remote chat
+          if (chats.length > 0 && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chats[0].id)) {
+            targetChatId = chats[0].id;
+          } else {
+            const { data: newChat, error: newChatErr } = await client
+              .from('chats')
+              .insert({
+                type: 'direct',
+                name: activeChat?.name || 'New Conversation',
+                created_by: currentUser.id,
+                ai_enabled: true,
+              })
+              .select()
+              .single();
 
-      if (error) {
-        console.error('Error sending message to Supabase:', error.message);
-        throw error;
-      }
+            if (newChatErr || !newChat) throw newChatErr || new Error('Failed to create remote conversation.');
+            await client.from('chat_members').insert([
+              { chat_id: newChat.id, user_id: currentUser.id, role: 'owner' },
+            ]);
+            targetChatId = newChat.id;
+            setActiveChatId(targetChatId);
+          }
+        }
 
-      const createdMsg = data as Message;
-
-      // Attach AI classification locally for rich UI banner
-      if (aiAnalysis.isImportant) {
-        createdMsg.ai_classification = {
-          id: 'ai_' + createdMsg.id,
-          message_id: createdMsg.id,
-          classification: aiAnalysis.classification,
-          confidence: aiAnalysis.confidence,
-          extracted_data: aiAnalysis.extractedData,
-          status: 'pending_review',
+        const msgPayload: any = {
+          chat_id: targetChatId,
+          sender_id: currentUser.id,
+          content: cleanContent,
+          message_type: options?.messageType || 'text',
+          expires_at: expiresAt,
+          delete_after_read: options?.deleteAfterRead || false,
+          reply_to_message_id: options?.replyToMessageId || null,
         };
-      }
 
-      setMessages(prev => [...prev, createdMsg]);
-      return createdMsg;
+        const { data, error } = await client
+          .from('messages')
+          .insert(msgPayload)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        const savedMsg: Message = {
+          ...(data as Message),
+          status: 'sent',
+          reply_to: replyTarget,
+        };
+
+        if (aiAnalysis.isImportant) {
+          try {
+            await client.from('ai_classifications').insert({
+              message_id: savedMsg.id,
+              classification: aiAnalysis.classification,
+              confidence: aiAnalysis.confidence,
+              extracted_data: aiAnalysis.extractedData,
+              status: 'pending_review',
+            });
+            savedMsg.ai_classification = {
+              id: 'ai_' + savedMsg.id,
+              message_id: savedMsg.id,
+              classification: aiAnalysis.classification,
+              confidence: aiAnalysis.confidence,
+              extracted_data: aiAnalysis.extractedData,
+              status: 'pending_review',
+            };
+          } catch {
+            // ignore
+          }
+        }
+
+        // Replace optimistic message
+        setMessages(prev => prev.map(m => m.id === tempId ? savedMsg : m));
+        setAllMessages(prev => ({
+          ...prev,
+          [targetChatId]: (prev[targetChatId] || []).map(m => m.id === tempId ? savedMsg : m),
+        }));
+
+        setChats(prev => prev.map(c => c.id === targetChatId ? {
+          ...c,
+          last_message: savedMsg,
+          updated_at: new Date().toISOString(),
+        } : c));
+
+        // Auto transition to delivered
+        setTimeout(() => {
+          setMessages(prev => prev.map(m => m.id === savedMsg.id ? { ...m, status: 'delivered' } : m));
+        }, 600);
+
+        return savedMsg;
+      } catch (err: any) {
+        console.error('Failed to send message:', err);
+        const failedMsg: Message = {
+          ...optimisticMsg,
+          status: 'failed',
+          error: err.message || 'Failed to send message. Tap to retry.',
+        };
+        setMessages(prev => prev.map(m => m.id === tempId ? failedMsg : m));
+        setAllMessages(prev => ({
+          ...prev,
+          [activeChatId]: (prev[activeChatId] || []).map(m => m.id === tempId ? failedMsg : m),
+        }));
+        throw err;
+      }
     }
 
-    // Demo store fallback
-    const msg = await mockStore.sendMessage(activeChatId, content, options);
-    setMessages(mockStore.getMessages(activeChatId));
-    return msg;
+    // Demo store fallback (Local persistent store)
+    try {
+      const msg = await mockStore.sendMessage(activeChatId, cleanContent, options);
+      setMessages(prev => prev.map(m => m.id === tempId ? msg : m));
+      setAllMessages(prev => ({
+        ...prev,
+        [activeChatId]: (prev[activeChatId] || []).map(m => m.id === tempId ? msg : m),
+      }));
+      setChats(prev => prev.map(c => c.id === activeChatId ? {
+        ...c,
+        last_message: msg,
+        updated_at: new Date().toISOString(),
+      } : c));
+      return msg;
+    } catch (err: any) {
+      const failedMsg: Message = {
+        ...optimisticMsg,
+        status: 'failed',
+        error: err.message || 'Storage error. Tap to retry.',
+      };
+      setMessages(prev => prev.map(m => m.id === tempId ? failedMsg : m));
+      throw err;
+    }
+  };
+
+  const retrySendMessage = async (messageId: string) => {
+    const failedMsg = messages.find(m => m.id === messageId);
+    if (!failedMsg) return;
+
+    // Remove the failed message and call sendMessage
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+    setAllMessages(prev => ({
+      ...prev,
+      [failedMsg.chat_id]: (prev[failedMsg.chat_id] || []).filter(m => m.id !== messageId),
+    }));
+
+    await sendMessage(failedMsg.content, {
+      messageType: failedMsg.message_type,
+      durationSeconds: failedMsg.duration_seconds,
+      deleteAfterRead: failedMsg.delete_after_read,
+      replyToMessageId: failedMsg.reply_to_message_id,
+    });
   };
 
   const startDirectChat = async (targetUser: Profile): Promise<string> => {
@@ -1076,6 +1429,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         selectChat,
         sendMessage,
+        retrySendMessage,
         editMessage,
         deleteMessage,
         addReaction,

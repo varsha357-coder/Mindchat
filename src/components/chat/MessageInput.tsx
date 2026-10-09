@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, Paperclip, Clock, Calendar, Smile, Mic, X, 
-  Sparkles, Image as ImageIcon, FileText, Check, ChevronRight 
+  Sparkles, Image as ImageIcon, FileText, Check, ChevronRight,
+  AlertCircle, Loader2
 } from 'lucide-react';
 import { Message } from '../../types/database';
 import { useChat } from '../../contexts/ChatContext';
@@ -11,7 +12,7 @@ import { ScheduledMessagesManagerModal } from './ScheduledMessagesManagerModal';
 interface MessageInputProps {
   replyingTo: Message | null;
   onCancelReply: () => void;
-  onSend: (text: string, options?: { durationSeconds?: number }) => void;
+  onSend: (text: string, options?: { durationSeconds?: number }) => Promise<void> | void;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -21,6 +22,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 }) => {
   const { activeChat, scheduledMessages } = useChat();
   const [text, setText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [showTimerPicker, setShowTimerPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -37,25 +40,44 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     s => s.chat_id === activeChat?.id && s.status === 'pending'
   );
 
-  const handleSend = () => {
-    if (!text.trim() && !isRecording) return;
+  const handleSend = async () => {
+    if (isSubmitting) return;
+    const trimmed = text.trim();
+    if (!trimmed && !isRecording) return;
 
     if (isRecording) {
-      onSend('🎤 Voice Message (0:14) [Audio preview simulation]', {
-        durationSeconds: activeTimer > 0 ? activeTimer : undefined,
-      });
-      setIsRecording(false);
+      setIsSubmitting(true);
+      try {
+        await onSend('🎤 Voice Message (0:14) [Audio preview simulation]', {
+          durationSeconds: activeTimer > 0 ? activeTimer : undefined,
+        });
+        setIsRecording(false);
+      } catch (err: any) {
+        setSendError(err?.message || 'Failed to send voice note.');
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
 
-    onSend(text.trim(), {
-      durationSeconds: activeTimer > 0 ? activeTimer : undefined,
-    });
-    setText('');
-    onCancelReply();
+    setIsSubmitting(true);
+    setSendError(null);
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+    try {
+      await onSend(trimmed, {
+        durationSeconds: activeTimer > 0 ? activeTimer : undefined,
+      });
+      // Clear input only after successful send
+      setText('');
+      onCancelReply();
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    } catch (err: any) {
+      console.error('Send error:', err);
+      setSendError(err?.message || 'Failed to send message to database. Tap Retry on the message or try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -130,6 +152,23 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             className="text-xs font-semibold px-2 py-0.5 rounded bg-surface text-text-primary"
           >
             Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Send Error Alert Banner */}
+      {sendError && (
+        <div className="mb-2 p-2.5 rounded-xl bg-danger/10 border border-danger/30 text-danger flex items-center justify-between text-xs animate-fade-in">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle size={15} className="shrink-0" />
+            <span className="truncate">{sendError}</span>
+          </div>
+          <button
+            onClick={() => setSendError(null)}
+            className="p-1 rounded-lg hover:bg-danger/20 text-danger shrink-0"
+            aria-label="Dismiss error"
+          >
+            <X size={14} />
           </button>
         </div>
       )}
@@ -245,11 +284,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         {text.trim() ? (
           <button
             onClick={handleSend}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-primary to-secondary text-white shadow-glow-primary hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0"
+            disabled={isSubmitting}
+            className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-primary to-secondary text-white shadow-glow-primary hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0 disabled:opacity-60 disabled:scale-100 cursor-pointer"
             title="Send Message"
             aria-label="Send"
           >
-            <Send size={18} />
+            {isSubmitting ? (
+              <Loader2 size={18} className="animate-spin text-white" />
+            ) : (
+              <Send size={18} />
+            )}
           </button>
         ) : (
           <button

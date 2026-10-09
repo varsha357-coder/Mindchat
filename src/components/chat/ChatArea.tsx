@@ -36,13 +36,41 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
   const [showScheduledModal, setShowScheduledModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const prevMessagesCountRef = useRef(messages.length);
 
-  // Auto-scroll on new message unless jumping to target message
+  // Track user scroll position so we don't disrupt users reading older history
+  const handleScroll = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const threshold = 150;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+    isNearBottomRef.current = isNearBottom;
+  };
+
+  // Auto-scroll on new message:
+  // Scroll to bottom if:
+  // 1. Initial chat load
+  // 2. The new message was sent by currentUser
+  // 3. The user was already near the bottom (< 150px away)
+  // Does NOT scroll down if the user scrolled up to read older messages!
   useEffect(() => {
-    if (!targetMessageId) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (targetMessageId) return;
+
+    const countChanged = messages.length !== prevMessagesCountRef.current;
+    const lastMessage = messages[messages.length - 1];
+    const isMyMessage = lastMessage?.sender_id === currentUser.id;
+
+    if (countChanged) {
+      if (prevMessagesCountRef.current === 0 || isMyMessage || isNearBottomRef.current) {
+        messagesEndRef.current?.scrollIntoView({ 
+          behavior: prevMessagesCountRef.current === 0 ? 'auto' : 'smooth' 
+        });
+      }
+      prevMessagesCountRef.current = messages.length;
     }
-  }, [messages.length, targetMessageId]);
+  }, [messages, targetMessageId, currentUser.id]);
 
   // Jump and highlight target message
   useEffect(() => {
@@ -79,12 +107,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     );
   }
 
-  const handleSendMessage = (text: string, options?: { durationSeconds?: number }) => {
-    sendMessage(text, {
-      durationSeconds: options?.durationSeconds,
-      replyToMessageId: replyingTo?.id,
-    });
-    setReplyingTo(null);
+  const handleSendMessage = async (text: string, options?: { durationSeconds?: number }) => {
+    isNearBottomRef.current = true;
+    try {
+      await sendMessage(text, {
+        durationSeconds: options?.durationSeconds,
+        replyToMessageId: replyingTo?.id,
+      });
+      setReplyingTo(null);
+    } catch (err) {
+      console.error('[ChatArea] sendMessage error:', err);
+      throw err;
+    }
   };
 
   const pendingScheduledThisChat = scheduledMessages.filter(
@@ -122,7 +156,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         )}
 
         {/* Message Stream */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-2">
+        <div 
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-2"
+        >
           {/* Welcome chat header notice */}
           <div className="text-center py-4 mb-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-secondary/70 border border-border text-[11px] text-text-secondary">
